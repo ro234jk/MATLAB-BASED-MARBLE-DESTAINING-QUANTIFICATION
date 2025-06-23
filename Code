@@ -1,0 +1,102 @@
+1 % Define the specific color codes and variations
+  2 colorCodesHex = {
+  3     '#564F47', '#3E2C2A', '#232227', '#2B292E', '#2A292E', ...
+  4     '#1D1C24', '#270F0B', '#38160A', '#4F220D', '#39190C', ...
+  5     '#220D08', '#1C202B', '#212227', '#1E252D', '#1E252D', '#1B1F28', ...
+  6     '#523E35', '#332D2D',                                                         '#3E3331','#282425','#652509','#3E2216','#1D212A',...
+  7     '#26272B','#28272C','#202022', '#231E22', '#302A2E', '#383433'
+  8 };
+  9 
+ 10 tolerances = [0.04, 0.04]; % Tolerances for variations in HSV values
+ 11 
+ 12 % Convert HEX to HSV for each color
+ 13 colorRanges = cell(1, numel(colorCodesHex));
+ 14 for i = 1:numel(colorCodesHex)
+ 15     rgb = sscanf(colorCodesHex{i}(2:end), '%2x%2x%2x', [1 3]) / 255;
+ 16     hsvColor = rgb2hsv(rgb);
+ 17     colorRanges{i} = struct('hue', hsvColor(1), ...
+ 18                             'saturation', hsvColor(2), ...
+ 19                             'value', hsvColor(3), ...
+ 20                             'tolerance', tolerances(mod(i - 1, numel(tolerances)) + 1));
+ 21 end
+ 22 
+ 23 % Load the images
+ 24 img1_path = 'C:\Users\adars\OneDrive\Desktop\before.jpeg';
+ 25 img2_path = 'C:\Users\adars\OneDrive\Desktop\After1.jpg';
+ 26 
+ 27 if exist(img1_path, 'file') ~= 2 || exist(img2_path, 'file') ~= 2
+ 28     disp('Error: Image files not found. Exiting.');
+ 29     return;
+ 30 end
+ 31 
+ 32 img1 = imread(img1_path);
+ 33 img2 = imread(img2_path);
+ 34 
+ 35 % Convert images to HSV
+ 36 hsvImg1 = rgb2hsv(img1);
+ 37 hsvImg2 = rgb2hsv(img2);
+ 38 
+ 39 % Normalize brightness using gamma correction and histogram equalization
+ 40 avgBrightness = mean([mean(hsvImg1(:,:,3), 'all'), mean(hsvImg2(:,:,3), 'all')]);
+ 41 hsvImg1(:,:,3) = hsvImg1(:,:,3) * (avgBrightness / mean(hsvImg1(:,:,3), 'all'));
+ 42 hsvImg2(:,:,3) = hsvImg2(:,:,3) * (avgBrightness / mean(hsvImg2(:,:,3), 'all'));
+ 43 
+ 44 % Convert back to RGB for visualization
+ 45 img1_normalized = hsv2rgb(hsvImg1);
+ 46 img2_normalized = hsv2rgb(hsvImg2);
+ 47 
+ 48 % Function to create a color mask
+ 49 function mask = createColorMask(hsvImg, colorRanges)
+ 50     mask = false(size(hsvImg, 1), size(hsvImg, 2));
+ 51     for i = 1:numel(colorRanges)
+ 52         range = colorRanges{i};
+ 53         mask = mask | (abs(hsvImg(:,:,1) - range.hue) < range.tolerance & ...
+ 54                        abs(hsvImg(:,:,2) - range.saturation) < range.tolerance & ...
+ 55                        abs(hsvImg(:,:,3) - range.value) < range.tolerance);
+ 56     end
+ 57 end
+ 58 
+ 59 % Create stain masks
+ 60 mask1 = createColorMask(hsvImg1, colorRanges);
+ 61 mask2 = createColorMask(hsvImg2, colorRanges);
+ 62 
+ 63 % Check if stain is masked properly, else retry
+ 64 retryCount = 0;
+ 65 maxRetries = 3;
+ 66 while sum(mask1(:)) == 0 && retryCount < maxRetries
+ 67     disp('Retrying stain masking with adjusted parameters...');
+ 68     tolerances = tolerances * 1.1;
+ 69     mask1 = createColorMask(hsvImg1, colorRanges);
+ 70     retryCount = retryCount + 1;
+ 71 end
+ 72 
+ 73 if sum(mask1(:)) == 0
+ 74     disp('Error: Unable to detect stains. Exiting.');
+ 75     return;
+ 76 end
+ 77 
+ 78 % Calculate total stain area
+ 79 totalStainArea1 = sum(mask1(:));
+ 80 totalStainArea2 = sum(mask2(:));
+ 81 
+ 82 % Determine if stain has reduced
+ 83 if totalStainArea2 < totalStainArea1
+ 84     stainReduction = (totalStainArea1 - totalStainArea2) / totalStainArea1 * 100;
+ 85     disp(['Stain reduction detected: ', num2str(stainReduction), '%']);
+ 86 else
+ 87     disp('No significant stain reduction detected.');
+ 88     furtherCleaning = input('Do you want to apply further cleaning? (yes/no): ', 's');
+ 89     if strcmpi(furtherCleaning, 'no')
+ 90         disp('Exiting process.');
+ 91         return;
+ 92     end
+ 93 end
+ 94 
+ 95 % Display results
+ 96 Fig.;
+ 97 subplot(2, 2, 1); imshow(img1_normalized); title('Image Before');
+ 98 subplot(2, 2, 2); imshow(mask1); title('Stains in Image Before');
+ 99 subplot(2, 2, 3); imshow(img2_normalized); title('Image After');
+100 subplot(2, 2, 4); imshow(mask2); title('Stains in Image After');
+101 
+102 disp('Analysis complete.');
